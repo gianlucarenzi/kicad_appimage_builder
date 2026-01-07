@@ -1,0 +1,29 @@
+# Build outputs
+output/
+*.AppImage
+
+# Temporary extraction directories
+squashfs-root/
+KiCAD_5.1.AppDir/
+*.AppDir/
+
+# Build logs
+build.log
+*.log
+
+# Test scripts (temporary)
+test_*.sh
+
+# Docker build cache
+.dockerignore
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
