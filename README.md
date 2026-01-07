@@ -47,10 +47,11 @@ git push -u origin master
 ### Trigger della Workflow
 
 La workflow si attiva automaticamente quando:
-- ✅ Fai push sul branch `master`
-- ✅ Crei un tag che inizia con `v` (es: `v1.0.0`)
-- ✅ Apri una Pull Request verso `master`
-- ✅ Avvii manualmente dalla sezione Actions di GitHub
+- ✅ Crei e pushi un tag che inizia con `v` (es: `v1.0.0`) → **Crea release con AppImage**
+- ✅ Apri una Pull Request verso `master` → Build di test (no release)
+- ✅ Avvii manualmente dalla sezione Actions di GitHub → Build on-demand
+
+**Nota**: Push normali al branch `master` NON triggerano la workflow per evitare build inutili.
 
 ### Download degli Artifacts
 
