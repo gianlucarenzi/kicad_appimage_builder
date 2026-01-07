@@ -1,0 +1,85 @@
+name: Build KiCad AppImage
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Free up disk space
+        run: |
+          # Rimuovi software non necessario per liberare spazio
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          df -h
+
+      - name: Build KiCad AppImage
+        run: |
+          chmod +x build_kicad_appimage.sh
+          ./build_kicad_appimage.sh
+
+      - name: Verify AppImage
+        run: |
+          ls -lh output/
+          file output/KiCad-5.1.12-x86_64.AppImage
+          chmod +x output/KiCad-5.1.12-x86_64.AppImage
+          output/KiCad-5.1.12-x86_64.AppImage --appimage-version || true
+
+      - name: Upload AppImage as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KiCad-5.1.12-AppImage
+          path: output/KiCad-5.1.12-x86_64.AppImage
+          retention-days: 30
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: output/KiCad-5.1.12-x86_64.AppImage
+          draft: false
+          prerelease: false
+          body: |
+            # KiCad 5.1.12 AppImage
+
+            AppImage di KiCad 5.1.12 basato su Ubuntu 20.04.
+
+            ## Download
+
+            Scarica `KiCad-5.1.12-x86_64.AppImage` e rendilo eseguibile:
+
+            ```bash
+            chmod +x KiCad-5.1.12-x86_64.AppImage
+            ./KiCad-5.1.12-x86_64.AppImage
+            ```
+
+            ## Compatibilità
+
+            - ✅ Debian 12 (Bookworm)
+            - ✅ Ubuntu 20.04+
+            - ✅ Altre distribuzioni Linux moderne con GLIBC 2.31+
+
+            ## Note
+
+            - Include Python 3.8 per il supporto agli script
+            - Include tutte le librerie KiCad (simboli, footprint, modelli 3D)
+            - Compatibile con sistemi moderni grazie alla gestione dinamica dei loader gdk-pixbuf
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
