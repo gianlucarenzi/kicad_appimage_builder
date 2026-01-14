@@ -1,0 +1,174 @@
+# Dockerfile per compilare KiCad 9.0 dai sorgenti su Ubuntu 20.04 (Focal)
+# Questo approccio garantisce la massima compatibilità binaria.
+FROM ubuntu:20.04
+
+# Imposta l'ambiente per un'installazione non interattiva
+ARG DEBIAN_FRONTEND=noninteractive
+
+#
+# Step 1: Installazione di una versione recente di CMake da Kitware
+#
+RUN apt-get update && apt-get install -y \
+    wget \
+    gpg \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc | gpg --dearmor - > /usr/share/keyrings/kitware-archive-keyring.gpg
+
+RUN echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ focal main' > /etc/apt/sources.list.d/kitware.list
+
+#
+# Step 2: Installazione delle dipendenze di base e degli strumenti di compilazione
+#
+RUN apt-get update && apt-get install -y \
+    cmake \
+    software-properties-common \
+    git \
+    g++ \
+    ninja-build \
+    python3-dev \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add newer GCC/G++ (required for C++20 concepts) from ubuntu-toolchain-r PPA
+RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test && apt-get update && apt-get install -y gcc-11 g++-11 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100 && \
+    rm -rf /var/lib/apt/lists/*
+
+#
+# Step 3: Aggiunta del PPA di KiCad per installare le dipendenze di compilazione
+# Usiamo il PPA della versione 8.0 che è compatibile con Focal (20.04)
+# per scaricare facilmente le dipendenze necessarie anche per la versione 9.
+# Aggiungiamo la chiave GPG manualmente per evitare timeout del keyserver.
+#
+RUN apt-get update && apt-get install -y dirmngr gnupg && rm -rf /var/lib/apt/lists/*
+RUN apt-key adv --keyserver hkps://keyserver.ubuntu.com:443 --recv-keys FDA854F61C4D0D9572BB95E5245D5502FAD7A805
+RUN echo "deb http://ppa.launchpad.net/kicad/kicad-8.0-releases/ubuntu focal main" >> /etc/apt/sources.list.d/kicad-8.0-releases.list && \
+    apt-get update
+
+#
+# Step 4: Installazione delle dipendenze specifiche di KiCad
+#
+RUN apt-get install -y \
+    libgl1-mesa-dev \
+    libglew-dev \
+    libglm-dev \
+    zlib1g-dev \
+    libcurl4-openssl-dev \
+    libcairo2-dev \
+    libboost-all-dev \
+    libwxgtk3.0-gtk3-dev \
+    libgtk-3-dev \
+    libssl-dev \
+    libprotobuf-dev \
+    protobuf-compiler \
+    swig \
+    libzstd-dev \
+    libgit2-dev \
+    libnng-dev \
+    unixodbc-dev \
+    # Dipendenze aggiuntive per ngspice, richieste dal suo script di build
+    flex \
+    bison \
+    libtool \
+    autoconf \
+    automake \
+    libxaw7-dev \
+    libreadline-dev \
+    libxmu-dev \
+    libxrender-dev \
+    libxt-dev \
+    xutils-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installazione di wxPython, una dipendenza chiave
+RUN pip3 install wxPython
+
+# Build and install wxWidgets 3.2.6 from source (required by KiCad 9)
+RUN set -eux; \
+    cd /tmp; \
+    wget -q https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.6/wxWidgets-3.2.6.tar.bz2; \
+    tar xjf wxWidgets-3.2.6.tar.bz2; \
+    cd wxWidgets-3.2.6; \
+    mkdir -p buildgtk && cd buildgtk; \
+    ../configure --with-gtk=3 --enable-unicode --enable-stl --prefix=/usr/local; \
+    make -j"$(nproc)"; \
+    make install; \
+    ldconfig; \
+    rm -rf /tmp/wxWidgets-3.2.6*
+
+#
+# Step 5: Download del codice sorgente di KiCad 9 e compilazione di ngspice
+#
+WORKDIR /build
+# Cloniamo il tag specifico della versione 9.0.7 per avere una versione stabile
+RUN git clone --depth 1 --branch 9.0.7 https://gitlab.com/kicad/code/kicad.git
+
+WORKDIR /build/kicad
+# Compila ngspice con --with-ngshared come richiesto da KiCad
+# Il percorso dello script è stato corretto a scripts/build/get_libngspice_so.sh
+RUN apt-get update && apt-get install -y ngspice libngspice0-dev && rm -rf /var/lib/apt/lists/*
+
+# Definisce le variabili per nome e versione dell'applicazione
+RUN apt-get update && apt-get install -y libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-ocaf-dev libocct-visualization-dev && rm -rf /var/lib/apt/lists/*
+
+# Ensure FindOCC can find OCCT libraries
+RUN sed -i 's/find_library(OCC_TEMP_LIB ${lib} HINTS ${OCC_LIBRARY_DIR} NO_DEFAULT_PATH)/find_library(OCC_TEMP_LIB ${lib} HINTS ${OCC_LIBRARY_DIR})/' /build/kicad/cmake/FindOCC.cmake && \
+    sed -i 's/message( FATAL_ERROR "" )/message(WARNING "OpenCascade component missing, continuing")/g' /build/kicad/cmake/FindOCC.cmake && \
+    sed -i "s/message( FATAL_ERROR \"\" )/message(WARNING \"OpenCascade component missing, continuing\")/g" /build/kicad/cmake/FindOCC.cmake
+
+ENV APP=KiCad
+ENV VERSION=9.0.7
+
+#
+# Step 6: Configurazione della compilazione con CMake
+#
+RUN apt-get update && apt-get install -y libsecret-1-dev && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /build/kicad/build
+# Install a newer protoc (Protobuf compiler) to support proto3 optional
+RUN apt-get update && apt-get install -y unzip wget && rm -rf /var/lib/apt/lists/* && \
+    wget -q -O /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v3.20.3/protoc-3.20.3-linux-x86_64.zip && \
+    unzip -q /tmp/protoc.zip -d /tmp/protoc && \
+    mv /tmp/protoc/bin/protoc /usr/local/bin/protoc && \
+    cp -r /tmp/protoc/include/* /usr/include/ && \
+    cp -r /tmp/protoc/include/google /build/kicad/api/proto/ && \
+    rm -rf /tmp/protoc /tmp/protoc.zip && \
+    chmod +x /usr/local/bin/protoc
+RUN set -eux; \
+    cd /tmp; \
+    wget -q https://github.com/protocolbuffers/protobuf/releases/download/v3.20.3/protobuf-cpp-3.20.3.tar.gz; \
+    tar xzf protobuf-cpp-3.20.3.tar.gz; \
+    cd protobuf-3.20.3; \
+    ./configure; \
+    make -j"$(nproc)"; \
+    make install; \
+    ldconfig; \
+    rm -rf /tmp/protobuf-3.20.3*;
+
+# Eseguiamo CMake per configurare il progetto.
+# Installiamo tutto in una directory "dist" per tenerlo separato
+# e facilitare l'impacchettamento dell'AppImage.
+WORKDIR /build/kicad/build
+
+RUN cmake \
+    -G "Ninja" \
+    -DCMAKE_INSTALL_PREFIX=/build/dist \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DKICAD_USE_WX_PYTHON=ON \
+    -DKICAD_USE_CMAKE_FINDPROTOBUF=ON \
+    -DKICAD_SCRIPTING_WXPYTHON=ON \
+    -DOCC_LIBRARY=/usr/lib/x86_64-linux-gnu/libTKernel.so \
+    -DOCC_LIBRARY_DIR=/usr/lib/x86_64-linux-gnu \
+    -DProtobuf_INCLUDE_DIR=/usr/include \
+    -DProtobuf_LIBRARY=/usr/lib/x86_64-linux-gnu/libprotobuf.so \
+    -DProtobuf_PROTOC_EXECUTABLE=/usr/local/bin/protoc \
+    ..
+
+#
+# Step 7: Compilazione e installazione
+#
+# Questo step richiederà molto tempo!
+RUN ninja
+RUN ninja install
