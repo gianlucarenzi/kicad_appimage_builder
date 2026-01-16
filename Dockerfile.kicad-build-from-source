@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     gpg \
     ca-certificates \
+    bzip2 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc | gpg --dearmor - > /usr/share/keyrings/kitware-archive-keyring.gpg
@@ -104,7 +105,25 @@ RUN set -eux; \
 #
 WORKDIR /build
 # Cloniamo il tag specifico della versione 9.0.7 per avere una versione stabile
+# Build and install a newer libgit2 from source before cloning KiCad to ensure CMake finds the matching API
+RUN set -eux; \
+    cd /tmp; \
+    wget -q https://github.com/libgit2/libgit2/archive/refs/tags/v1.6.1.tar.gz -O libgit2.tar.gz; \
+    tar xzf libgit2.tar.gz; \
+    cd libgit2-1.6.1; \
+    mkdir build && cd build; \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_SHARED_LIBS=ON; \
+    cmake --build . --target install -j"$(nproc)"; \
+    ldconfig; \
+    rm -rf /tmp/libgit2* && \
+    true
+
 RUN git clone --depth 1 --branch 9.0.7 https://gitlab.com/kicad/code/kicad.git
+
+# Patch libgit2 API name differences on Ubuntu Focal (system libgit2 uses git_cred / git_cred_free)
+# This sed replaces occurrences in the source that expect git_credential / git_credential_free
+RUN sed -i 's/git_credential/git_cred/g' /build/kicad/common/git/kicad_git_memory.h || true && \
+    sed -i 's/git_credential_free/git_cred_free/g' /build/kicad/common/git/kicad_git_memory.h || true
 
 WORKDIR /build/kicad
 # Compila ngspice con --with-ngshared come richiesto da KiCad
@@ -112,7 +131,7 @@ WORKDIR /build/kicad
 RUN apt-get update && apt-get install -y ngspice libngspice0-dev && rm -rf /var/lib/apt/lists/*
 
 # Definisce le variabili per nome e versione dell'applicazione
-RUN apt-get update && apt-get install -y libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-ocaf-dev libocct-visualization-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-ocaf-dev libocct-visualization-dev libocct-data-exchange-dev && rm -rf /var/lib/apt/lists/*
 
 # Ensure FindOCC can find OCCT libraries
 RUN sed -i 's/find_library(OCC_TEMP_LIB ${lib} HINTS ${OCC_LIBRARY_DIR} NO_DEFAULT_PATH)/find_library(OCC_TEMP_LIB ${lib} HINTS ${OCC_LIBRARY_DIR})/' /build/kicad/cmake/FindOCC.cmake && \
@@ -128,7 +147,7 @@ ENV VERSION=9.0.7
 RUN apt-get update && apt-get install -y libsecret-1-dev && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /build/kicad/build
 # Install a newer protoc (Protobuf compiler) to support proto3 optional
-RUN apt-get update && apt-get install -y unzip wget && rm -rf /var/lib/apt/lists/* && \
+RUN apt-get update && apt-get install -y unzip wget curl && rm -rf /var/lib/apt/lists/* && \
     wget -q -O /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v3.20.3/protoc-3.20.3-linux-x86_64.zip && \
     unzip -q /tmp/protoc.zip -d /tmp/protoc && \
     mv /tmp/protoc/bin/protoc /usr/local/bin/protoc && \
@@ -147,22 +166,38 @@ RUN set -eux; \
     ldconfig; \
     rm -rf /tmp/protobuf-3.20.3*;
 
+# Build and install Boost 1.82.0 from source (needed for C++20 compatibility)
+RUN set -eux; \
+    cd /tmp; \
+    wget -q -O boost.tar.bz2 https://downloads.sourceforge.net/project/boost/boost/1.82.0/boost_1_82_0.tar.bz2; \
+    tar xjf boost.tar.bz2; \
+    cd boost_1_82_0; \
+    ./bootstrap.sh --prefix=/usr; \
+    ./b2 -j"$(nproc)" install; \
+    ldconfig; \
+    rm -rf /tmp/boost_1_82_0* /tmp/boost.tar.bz2;
+
 # Eseguiamo CMake per configurare il progetto.
 # Installiamo tutto in una directory "dist" per tenerlo separato
 # e facilitare l'impacchettamento dell'AppImage.
 WORKDIR /build/kicad/build
+
+# Install EGL/GLES dev packages right before building KiCad to provide GL headers/types
+RUN apt-get update && apt-get install -y libegl1-mesa-dev libgles2-mesa-dev && rm -rf /var/lib/apt/lists/*
 
 RUN cmake \
     -G "Ninja" \
     -DCMAKE_INSTALL_PREFIX=/build/dist \
     -DCMAKE_BUILD_TYPE=Release \
     -DKICAD_USE_WX_PYTHON=ON \
+    -DKICAD_USE_EGL=ON \
+    -DKICAD_WAYLAND=OFF \
     -DKICAD_USE_CMAKE_FINDPROTOBUF=ON \
     -DKICAD_SCRIPTING_WXPYTHON=ON \
     -DOCC_LIBRARY=/usr/lib/x86_64-linux-gnu/libTKernel.so \
     -DOCC_LIBRARY_DIR=/usr/lib/x86_64-linux-gnu \
-    -DProtobuf_INCLUDE_DIR=/usr/include \
-    -DProtobuf_LIBRARY=/usr/lib/x86_64-linux-gnu/libprotobuf.so \
+    -DProtobuf_INCLUDE_DIR=/usr/local/include \
+    -DProtobuf_LIBRARY=/usr/local/lib/libprotobuf.so \
     -DProtobuf_PROTOC_EXECUTABLE=/usr/local/bin/protoc \
     ..
 
@@ -170,5 +205,6 @@ RUN cmake \
 # Step 7: Compilazione e installazione
 #
 # Questo step richiederà molto tempo!
-RUN ninja
+# Try to build kicad-cli explicitly if present (falls back to full build)
+RUN ninja kicad-cli || true && ninja
 RUN ninja install
