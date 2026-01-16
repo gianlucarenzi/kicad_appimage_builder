@@ -85,7 +85,7 @@ RUN apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Installazione di wxPython, una dipendenza chiave
-RUN pip3 install wxPython
+RUN pip3 install wxPython && pip3 install kikit
 
 # Build and install wxWidgets 3.2.6 from source (required by KiCad 9)
 RUN set -eux; \
@@ -189,6 +189,8 @@ RUN cmake \
     -G "Ninja" \
     -DCMAKE_INSTALL_PREFIX=/build/dist \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_RPATH=/build/dist/lib \
+    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
     -DKICAD_USE_WX_PYTHON=ON \
     -DKICAD_USE_EGL=ON \
     -DKICAD_WAYLAND=OFF \
@@ -207,4 +209,27 @@ RUN cmake \
 # Questo step richiederà molto tempo!
 # Try to build kicad-cli explicitly if present (falls back to full build)
 RUN ninja kicad-cli || true && ninja
-RUN ninja install
+RUN ninja install && \
+    python3 -c 'import kikit,os,shutil; src=os.path.dirname(kikit.__file__); dst="/build/dist/share/kicad/scripting/plugins/kikit"; os.makedirs(os.path.dirname(dst), exist_ok=True); shutil.copytree(src,dst,dirs_exist_ok=True)'
+
+RUN echo "/build/dist/lib" > /etc/ld.so.conf.d/kicad.conf && ldconfig && \
+    cp -a /build/dist/lib/*.so* /usr/lib/ 2>/dev/null || true && ldconfig
+
+RUN mkdir -p /usr/local/lib/python3.8/dist-packages && \
+    echo "/build/dist/lib/python3.8/site-packages" > /usr/local/lib/python3.8/dist-packages/kicad.pth && \
+    echo "/build/dist/lib/python3.8/dist-packages" >> /usr/local/lib/python3.8/dist-packages/kicad.pth && \
+    # also copy pcbnew python extensions if present so they are importable without PYTHONPATH
+    cp -a /build/dist/lib/python3.8/site-packages/pcbnew* /usr/local/lib/python3.8/dist-packages/ 2>/dev/null || true && \
+    cp -a /build/dist/lib/python3.8/dist-packages/pcbnew* /usr/local/lib/python3.8/dist-packages/ 2>/dev/null || true
+
+# Include official KiCad libraries: footprints, symbols and 3D packages
+RUN set -eux; \
+    cd /tmp; \
+    git clone --depth 1 https://gitlab.com/kicad/libraries/kicad-footprints.git kicad-footprints || true; \
+    git clone --depth 1 https://gitlab.com/kicad/libraries/kicad-symbols.git kicad-symbols || true; \
+    git clone --depth 1 https://gitlab.com/kicad/libraries/kicad-packages3d.git kicad-packages3d || true; \
+    mkdir -p /build/dist/share/kicad; \
+    rm -rf /build/dist/share/kicad/footprints || true; mv kicad-footprints /build/dist/share/kicad/footprints || true; \
+    rm -rf /build/dist/share/kicad/symbols || true; mv kicad-symbols /build/dist/share/kicad/symbols || true; \
+    rm -rf /build/dist/share/kicad/packages3d || true; mv kicad-packages3d /build/dist/share/kicad/packages3d || true; \
+    chown -R root:root /build/dist/share/kicad || true

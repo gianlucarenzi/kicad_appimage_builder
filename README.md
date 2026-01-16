@@ -134,3 +134,25 @@ Questo progetto è uno script di build per KiCad. KiCad stesso è distribuito so
 - [KiCad Official Website](https://www.kicad.org/)
 - [KiCad 5.1 PPA](https://launchpad.net/~kicad/+archive/ubuntu/kicad-5.1-releases)
 - [AppImage Documentation](https://docs.appimage.org/)
+
+## Uso delle risorse e test nell'immagine Docker
+
+L'immagine Docker generata da questo progetto include i binari e tutte le risorse necessarie per eseguire KiCad e i plugin: le librerie condivise di KiCad vengono copiate in /usr/lib (derivate da /build/dist/lib), i binding Python (pcbnew) sono resi importabili in site-packages, e le librerie ufficiali (simboli, footprint e packages3d) sono collocate in /build/dist/share/kicad.
+
+Esempi rapidi per testare interattivamente (da host):
+
+- Avviare una shell interattiva nel container:
+  docker run --rm -it -v "$(pwd)":/work kicad-build:latest bash
+
+- Verifiche dentro il container:
+  /build/dist/bin/kicad-cli --version
+  kikit --version
+  python3 -c "import pcbnew,kikit; print('pcbnew', getattr(pcbnew,'__version__','?')); print('kikit', kikit.__version__)"
+  ls -la /build/dist/share/kicad/footprints /build/dist/share/kicad/symbols /build/dist/share/kicad/packages3d
+
+Se si riscontrano errori di collegamento runtime, usare temporaneamente (dentro il container):
+
+  export LD_LIBRARY_PATH=/build/dist/lib:$LD_LIBRARY_PATH
+  export PYTHONPATH=/build/dist/lib/python3.8/site-packages:$PYTHONPATH
+
+Nota: l'immagine è già configurata per non richiedere queste variabili nella maggior parte dei casi (le .so sono installate in /usr/lib e ldconfig è stato eseguito; i binding pcbnew sono copiati in site-packages).
