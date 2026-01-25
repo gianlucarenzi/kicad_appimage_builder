@@ -125,12 +125,12 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
     echo '# Patch runtime: riscrive riferimenti assoluti a /usr del filesystem host dentro lo script kicad.bin (salta la prima riga)' >> $APP.AppDir/AppRun && \
     echo 'if [ -f "${HERE}/usr/bin/kicad.bin" ]; then' >> $APP.AppDir/AppRun && \
-    echo '  # Usa awk per preservare la shebang e sostituire percorsi assoluti con quelli dentro l\'"'"'AppDir' >> $APP.AppDir/AppRun && \
+    echo '  # Usa awk per preservare la shebang e sostituire percorsi assoluti con quelli dentro l'\''AppDir' >> $APP.AppDir/AppRun && \
     echo '  awk -v h="${HERE}" '\''NR==1{print;next} {gsub("/usr/share/kicad",h"/usr/share/kicad"); gsub("/usr/lib/x86_64-linux-gnu/kicad",h"/usr/lib/x86_64-linux-gnu/kicad"); gsub("/usr/lib/x86_64-linux-gnu",h"/usr/lib/x86_64-linux-gnu"); gsub("/usr/lib",h"/usr/lib"); gsub("/usr/bin",h"/usr/bin"); print}'\'' "${HERE}/usr/bin/kicad.bin" > "${HERE}/usr/bin/kicad.bin.patched" || true' >> $APP.AppDir/AppRun && \
     echo '  mv "${HERE}/usr/bin/kicad.bin.patched" "${HERE}/usr/bin/kicad.bin" >/dev/null 2>&1 || true' >> $APP.AppDir/AppRun && \
     echo 'fi' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
-    echo '# Imposta le variabili d\''"'"'ambiente per Python bundled' >> $APP.AppDir/AppRun && \
+    echo '# Imposta le variabili d'\''ambiente per Python bundled' >> $APP.AppDir/AppRun && \
     echo 'export PYTHONHOME="${HERE}/usr"' >> $APP.AppDir/AppRun && \
     echo 'export PYTHONPATH="${HERE}/usr/lib/python3.8:${HERE}/usr/lib/python3/dist-packages"' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
