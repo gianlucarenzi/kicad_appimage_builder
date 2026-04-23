@@ -140,6 +140,14 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo '# Imposta PATH per usare esclusivamente i binari bundled' >> $APP.AppDir/AppRun && \
     echo 'export PATH="${HERE}/usr/bin"' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
+    echo '# Forza le directory dati KiCad bundled invece dei default compilati nel pacchetto Ubuntu' >> $APP.AppDir/AppRun && \
+    echo 'export KICAD_PATH="${HERE}/usr/share/kicad"' >> $APP.AppDir/AppRun && \
+    echo 'export KICAD_TEMPLATE_DIR="${KICAD_PATH}/template"' >> $APP.AppDir/AppRun && \
+    echo 'export KICAD_SYMBOL_DIR="${KICAD_PATH}/library"' >> $APP.AppDir/AppRun && \
+    echo 'export KISYSMOD="${KICAD_PATH}/modules"' >> $APP.AppDir/AppRun && \
+    echo 'export KISYS3DMOD="${KISYSMOD}/packages3d"' >> $APP.AppDir/AppRun && \
+    echo 'export KIGITHUB="https://github.com/KiCad"' >> $APP.AppDir/AppRun && \
+    echo '' >> $APP.AppDir/AppRun && \
     echo '# Disabilita completamente ibus e altri input method per evitare conflitti' >> $APP.AppDir/AppRun && \
     echo 'export GTK_IM_MODULE="xim"' >> $APP.AppDir/AppRun && \
     echo 'export QT_IM_MODULE="xim"' >> $APP.AppDir/AppRun && \

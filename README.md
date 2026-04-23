@@ -10,6 +10,7 @@ Progetto per creare un AppImage funzionante di KiCad 5.1.12 basato su Ubuntu 20.
 - ✅ Gestione corretta dei loader gdk-pixbuf per la compatibilità con sistemi moderni
 - ✅ Disabilitazione di ibus per evitare conflitti con Debian 12
 - ✅ Cache dei loader PNG rigenerato dinamicamente al runtime
+- ✅ Variabili KiCad di sistema forzate verso le risorse bundled dentro l'AppImage
 
 ## Prerequisiti
 
@@ -116,6 +117,7 @@ KICAD_DEBUG=1 ./output/KiCad-5.1.12-x86_64.AppImage
 1. **Crash gdk-pixbuf**: Risolto copiando `gdk-pixbuf-query-loaders` dalla posizione corretta in Ubuntu 20.04
 2. **Cache loader PNG**: Il cache viene rigenerato dinamicamente al runtime con i percorsi corretti
 3. **Conflitti ibus**: Disabilitato completamente per evitare errori con glib in Debian 12
+4. **Directory KiCad host-side**: `KICAD_SYMBOL_DIR`, `KICAD_TEMPLATE_DIR`, `KISYSMOD` e `KISYS3DMOD` vengono esportate dall'`AppRun` verso i path bundled nell'AppImage
 
 ### Compatibilità
 
