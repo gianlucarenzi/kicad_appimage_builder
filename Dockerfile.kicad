@@ -103,6 +103,7 @@ RUN squashfs-root/AppRun --appdir $APP.AppDir \
 # Copia gdk-pixbuf loaders per evitare conflitti con librerie di sistema
 # MA NON copiamo il loader SVG per evitare il conflitto con librsvg/pango
 RUN mkdir -p $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders
+RUN mkdir -p $APP.AppDir/usr/lib/x86_64-linux-gnu/gio/modules
 RUN for loader in /usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/*.so; do \
     if [ "$(basename $loader)" != "libpixbufloader-svg.so" ]; then \
         cp "$loader" $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/; \
@@ -115,6 +116,11 @@ RUN touch $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders.cac
 # Rinomina il binario kicad originale per non sovrascriverlo
 RUN mv $APP.AppDir/usr/bin/kicad $APP.AppDir/usr/bin/kicad.bin
 
+# Riscrive una volta sola i percorsi assoluti nel wrapper KiCad mentre l'AppDir e' ancora scrivibile
+RUN awk -v h="\${APPDIR}" 'NR==1{print;next} {gsub("/usr/share/kicad",h"/usr/share/kicad"); gsub("/usr/lib/x86_64-linux-gnu/kicad",h"/usr/lib/x86_64-linux-gnu/kicad"); gsub("/usr/lib/x86_64-linux-gnu",h"/usr/lib/x86_64-linux-gnu"); gsub("/usr/lib",h"/usr/lib"); gsub("/usr/bin",h"/usr/bin"); print}' \
+    $APP.AppDir/usr/bin/kicad.bin > $APP.AppDir/usr/bin/kicad.bin.patched && \
+    mv $APP.AppDir/usr/bin/kicad.bin.patched $APP.AppDir/usr/bin/kicad.bin
+
 # Rimuovi l'AppRun creato da linuxdeploy
 RUN rm -f $APP.AppDir/AppRun $APP.AppDir/AppRun.original
 
@@ -122,13 +128,7 @@ RUN rm -f $APP.AppDir/AppRun $APP.AppDir/AppRun.original
 RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo 'SELF=$(readlink -f "$0")' >> $APP.AppDir/AppRun && \
     echo 'HERE=${SELF%/*}' >> $APP.AppDir/AppRun && \
-    echo '' >> $APP.AppDir/AppRun && \
-    echo '# Patch runtime: riscrive riferimenti assoluti a /usr del filesystem host dentro lo script kicad.bin (salta la prima riga)' >> $APP.AppDir/AppRun && \
-    echo 'if [ -f "${HERE}/usr/bin/kicad.bin" ]; then' >> $APP.AppDir/AppRun && \
-    echo '  # Usa awk per preservare la shebang e sostituire percorsi assoluti con quelli dentro l'\''AppDir' >> $APP.AppDir/AppRun && \
-    echo '  awk -v h="${HERE}" '\''NR==1{print;next} {gsub("/usr/share/kicad",h"/usr/share/kicad"); gsub("/usr/lib/x86_64-linux-gnu/kicad",h"/usr/lib/x86_64-linux-gnu/kicad"); gsub("/usr/lib/x86_64-linux-gnu",h"/usr/lib/x86_64-linux-gnu"); gsub("/usr/lib",h"/usr/lib"); gsub("/usr/bin",h"/usr/bin"); print}'\'' "${HERE}/usr/bin/kicad.bin" > "${HERE}/usr/bin/kicad.bin.patched" || true' >> $APP.AppDir/AppRun && \
-    echo '  mv "${HERE}/usr/bin/kicad.bin.patched" "${HERE}/usr/bin/kicad.bin" >/dev/null 2>&1 || true' >> $APP.AppDir/AppRun && \
-    echo 'fi' >> $APP.AppDir/AppRun && \
+    echo 'export APPDIR="$HERE"' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
     echo '# Imposta le variabili d'\''ambiente per Python bundled' >> $APP.AppDir/AppRun && \
     echo 'export PYTHONHOME="${HERE}/usr"' >> $APP.AppDir/AppRun && \
@@ -159,19 +159,21 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo '# Sopprime warning GTK non critici' >> $APP.AppDir/AppRun && \
     echo 'export G_MESSAGES_DEBUG=""' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
-    echo '# Forza uso solo di icone PNG/XPM, disabilita SVG per evitare conflitti librsvg/pango' >> $APP.AppDir/AppRun && \
-    echo 'export GTK_THEME=""' >> $APP.AppDir/AppRun && \
+    echo '# Forza un tema GTK stabile per evitare rendering corrotto con temi host moderni/incompatibili' >> $APP.AppDir/AppRun && \
+    echo 'export GTK_THEME="${KICAD_GTK_THEME-Adwaita}"' >> $APP.AppDir/AppRun && \
     echo 'export XDG_DATA_DIRS="${HERE}/usr/share"' >> $APP.AppDir/AppRun && \
     echo '# Disabilita completamente i temi di icone personalizzati' >> $APP.AppDir/AppRun && \
     echo 'unset XDG_DATA_HOME' >> $APP.AppDir/AppRun && \
     echo 'unset XDG_CONFIG_HOME' >> $APP.AppDir/AppRun && \
     echo 'unset XDG_CONFIG_DIRS' >> $APP.AppDir/AppRun && \
     echo 'export GTK_DATA_PREFIX="${HERE}/usr"' >> $APP.AppDir/AppRun && \
+    echo 'export GIO_MODULE_DIR="${HERE}/usr/lib/x86_64-linux-gnu/gio/modules"' >> $APP.AppDir/AppRun && \
+    echo 'unset GIO_EXTRA_MODULES' >> $APP.AppDir/AppRun && \
     echo '# CRITICO: Configura gdk-pixbuf loaders' >> $APP.AppDir/AppRun && \
     echo 'export GDK_PIXBUF_MODULEDIR="${HERE}/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders"' >> $APP.AppDir/AppRun && \
-    echo '# Usa cache temporaneo rigenerato ad ogni avvio con i percorsi dinamici corretti' >> $APP.AppDir/AppRun && \
-    echo 'CACHE_DIR=$(mktemp -d -t kicad-pixbuf-XXXXXX)' >> $APP.AppDir/AppRun && \
-    echo 'export GDK_PIXBUF_MODULE_FILE="$CACHE_DIR/loaders.cache"' >> $APP.AppDir/AppRun && \
+    echo '# Usa un cache in /tmp per evitare scritture nell'\''AppImage montata in sola lettura' >> $APP.AppDir/AppRun && \
+    echo 'export GDK_PIXBUF_MODULE_FILE="/tmp/kicad-gdk-pixbuf-$$.cache"' >> $APP.AppDir/AppRun && \
+    echo 'trap '\''/bin/rm -f "$GDK_PIXBUF_MODULE_FILE"'\'' EXIT' >> $APP.AppDir/AppRun && \
     echo '# DEBUG: Attiva logging se KICAD_DEBUG=1' >> $APP.AppDir/AppRun && \
     echo 'if [ "$KICAD_DEBUG" = "1" ]; then' >> $APP.AppDir/AppRun && \
     echo '  echo "[DEBUG] GDK_PIXBUF_MODULEDIR=$GDK_PIXBUF_MODULEDIR" >&2' >> $APP.AppDir/AppRun && \
@@ -182,18 +184,7 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo 'if [ -x "${HERE}/usr/bin/gdk-pixbuf-query-loaders" ]; then' >> $APP.AppDir/AppRun && \
     echo '  [ "$KICAD_DEBUG" = "1" ] && echo "[DEBUG] Using bundled gdk-pixbuf-query-loaders" >&2' >> $APP.AppDir/AppRun && \
     echo '  "${HERE}/usr/bin/gdk-pixbuf-query-loaders" "${GDK_PIXBUF_MODULEDIR}"/*.so > "$GDK_PIXBUF_MODULE_FILE" 2>/dev/null' >> $APP.AppDir/AppRun && \
-    echo '  LOADER_EXIT=$?' >> $APP.AppDir/AppRun && \
-    echo '  if [ "$KICAD_DEBUG" = "1" ]; then' >> $APP.AppDir/AppRun && \
-    echo '    echo "[DEBUG] gdk-pixbuf-query-loaders exit code: $LOADER_EXIT" >&2' >> $APP.AppDir/AppRun && \
-    echo '    echo "[DEBUG] Cache file size: $(wc -c < "$GDK_PIXBUF_MODULE_FILE" 2>/dev/null || echo 0) bytes" >&2' >> $APP.AppDir/AppRun && \
-    echo '    echo "[DEBUG] First 5 lines of cache:" >&2' >> $APP.AppDir/AppRun && \
-    echo '    head -5 "$GDK_PIXBUF_MODULE_FILE" 2>/dev/null >&2 || echo "[DEBUG] Cache file empty or unreadable" >&2' >> $APP.AppDir/AppRun && \
-    echo '  fi' >> $APP.AppDir/AppRun && \
-    echo 'elif command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then' >> $APP.AppDir/AppRun && \
-    echo '  [ "$KICAD_DEBUG" = "1" ] && echo "[DEBUG] Using system gdk-pixbuf-query-loaders" >&2' >> $APP.AppDir/AppRun && \
-    echo '  gdk-pixbuf-query-loaders "${GDK_PIXBUF_MODULEDIR}"/*.so > "$GDK_PIXBUF_MODULE_FILE" 2>/dev/null || true' >> $APP.AppDir/AppRun && \
-    echo 'else' >> $APP.AppDir/AppRun && \
-    echo '  [ "$KICAD_DEBUG" = "1" ] && echo "[DEBUG] No gdk-pixbuf-query-loaders found" >&2' >> $APP.AppDir/AppRun && \
+    echo '  [ "$KICAD_DEBUG" = "1" ] && echo "[DEBUG] gdk-pixbuf cache generated" >&2' >> $APP.AppDir/AppRun && \
     echo 'fi' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
     echo '# Esegui KiCad binario rinominato' >> $APP.AppDir/AppRun && \

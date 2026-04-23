@@ -97,6 +97,13 @@ Esegui KiCad:
 ./output/KiCad-5.1.12-x86_64.AppImage
 ```
 
+Per evitare artefatti grafici con alcuni temi host moderni (per esempio Material GTK su Debian 13 MATE), l'AppImage forza di default il tema GTK `Adwaita`. Se vuoi provare un tema diverso:
+```bash
+KICAD_GTK_THEME=TraditionalOk ./output/KiCad-5.1.12-x86_64.AppImage
+```
+
+Il launcher evita inoltre di scrivere dentro l'AppImage montata in sola lettura, genera il cache `gdk-pixbuf` in `/tmp` e blocca il caricamento dei moduli `gio/gvfs` del sistema host quando sono incompatibili con le librerie bundled.
+
 ### Debug Mode
 
 Per visualizzare informazioni di debug sul caricamento dei loader gdk-pixbuf:
@@ -118,6 +125,8 @@ KICAD_DEBUG=1 ./output/KiCad-5.1.12-x86_64.AppImage
 2. **Cache loader PNG**: Il cache viene rigenerato dinamicamente al runtime con i percorsi corretti
 3. **Conflitti ibus**: Disabilitato completamente per evitare errori con glib in Debian 12
 4. **Directory KiCad host-side**: `KICAD_SYMBOL_DIR`, `KICAD_TEMPLATE_DIR`, `KISYSMOD` e `KISYS3DMOD` vengono esportate dall'`AppRun` verso i path bundled nell'AppImage
+5. **Temi GTK incompatibili**: il launcher forza `Adwaita` di default per evitare file selector e liste illeggibili con alcuni temi host
+6. **Launcher read-only safe**: il wrapper KiCad viene riscritto in build, il cache pixbuf vive in `/tmp` e i moduli `gio` host vengono disabilitati per evitare crash/symbol mismatch
 
 ### Compatibilità
 
