@@ -1,11 +1,10 @@
 # Dockerfile per creare l'AppImage di KiCad 5.1
-# Utilizza Ubuntu 20.04 (Focal Fossa) come base
 FROM ubuntu:20.04
 
-# Evita richieste interattive durante la compilazione
+# Evita richieste interattive
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Installa le dipendenze di base, inclusi i pacchetti per il build dell'AppImage
+# Installa dipendenze base
 RUN apt-get update && apt-get install -y \
     software-properties-common \
     wget \
@@ -18,13 +17,11 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Aggiunge manualmente la chiave GPG del PPA di KiCad per evitare timeout
-RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys FDA854F61C4D0D9572BB95E5245D5502FAD7A805
+# Aggiunge PPA KiCad
+RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys FDA854F61C4D0D9572BB95E5245D5502FAD7A805 && \
+    add-apt-repository --yes ppa:kicad/kicad-5.1-releases
 
-# Aggiunge il PPA ufficiale di KiCad 5.1
-RUN add-apt-repository --yes ppa:kicad/kicad-5.1-releases
-
-# Aggiorna l'elenco dei pacchetti e installa KiCad e tutte le librerie associate
+# Installa KiCad e librerie
 RUN apt-get update && apt-get install -y \
     kicad \
     kicad-libraries \
@@ -33,165 +30,92 @@ RUN apt-get update && apt-get install -y \
     kicad-packages3d \
     && rm -rf /var/lib/apt/lists/*
 
-# Imposta la directory di lavoro
 WORKDIR /build
 
-# Scarica lo strumento linuxdeploy per creare l'AppImage
-RUN wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-RUN chmod +x linuxdeploy-x86_64.AppImage
+# Prepara linuxdeploy
+RUN wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage && \
+    chmod +x linuxdeploy-x86_64.AppImage && \
+    ./linuxdeploy-x86_64.AppImage --appimage-extract
 
-# Estrae linuxdeploy dall'AppImage per evitare problemi con FUSE nel container
-RUN ./linuxdeploy-x86_64.AppImage --appimage-extract
-
-# Non usiamo i plugin perché:
-# - plugin python compila Python dai sorgenti (troppo lento)
-# - plugin gtk ha problemi con patchelf
-# Invece copiamo manualmente tutto ciò che serve
-
-
-
-# Definisce le variabili per nome e versione dell'applicazione
 ENV APP=KiCad
 ENV VERSION=5.1.12
 
-# Crea la struttura di directory di base dell'AppDir
-RUN mkdir -p $APP.AppDir/usr/bin
-RUN mkdir -p $APP.AppDir/usr/lib/x86_64-linux-gnu/kicad
-RUN mkdir -p $APP.AppDir/usr/share
+# Crea struttura AppDir
+RUN mkdir -p $APP.AppDir/usr/bin \
+    $APP.AppDir/usr/lib/x86_64-linux-gnu/kicad \
+    $APP.AppDir/usr/share
 
-# Copia i binari e i file .kiface di KiCad usando comandi separati e robusti
-RUN cp /usr/bin/kicad* $APP.AppDir/usr/bin/
-RUN cp /usr/bin/_* $APP.AppDir/usr/bin/
-RUN cp /usr/bin/eeschema $APP.AppDir/usr/bin/
-RUN cp /usr/bin/gerbview $APP.AppDir/usr/bin/
-RUN cp /usr/bin/pcbnew $APP.AppDir/usr/bin/
-RUN cp /usr/bin/pl_editor $APP.AppDir/usr/bin/
-RUN cp /usr/bin/bitmap2component $APP.AppDir/usr/bin/
-RUN cp /usr/bin/dxf2idf $APP.AppDir/usr/bin/
-RUN cp /usr/bin/idf* $APP.AppDir/usr/bin/
-RUN cp /usr/bin/pcb_calculator $APP.AppDir/usr/bin/
+# Copia binari e risorse
+RUN cp /usr/bin/kicad* $APP.AppDir/usr/bin/ && \
+    cp /usr/bin/_* $APP.AppDir/usr/bin/ && \
+    cp /usr/bin/eeschema $APP.AppDir/usr/bin/ && \
+    cp /usr/bin/gerbview $APP.AppDir/usr/bin/ && \
+    cp /usr/bin/pcbnew $APP.AppDir/usr/bin/ && \
+    cp /usr/bin/pl_editor $APP.AppDir/usr/bin/ && \
+    cp /usr/bin/bitmap2component $APP.AppDir/usr/bin/ && \
+    cp /usr/bin/pcb_calculator $APP.AppDir/usr/bin/ && \
+    cp -r /usr/lib/x86_64-linux-gnu/kicad/plugins $APP.AppDir/usr/lib/x86_64-linux-gnu/kicad/ && \
+    cp -r /usr/share/kicad $APP.AppDir/usr/share/
 
-# Copia i plugin interni di KiCad
-RUN cp -r /usr/lib/x86_64-linux-gnu/kicad/plugins $APP.AppDir/usr/lib/x86_64-linux-gnu/kicad/
+# Python
+RUN cp /usr/bin/python3* $APP.AppDir/usr/bin/ && \
+    mkdir -p $APP.AppDir/usr/lib/python3.8 && \
+    cp -r /usr/lib/python3.8/* $APP.AppDir/usr/lib/python3.8/ && \
+    mkdir -p $APP.AppDir/usr/lib/python3/dist-packages && \
+    cp -r /usr/lib/python3/dist-packages/* $APP.AppDir/usr/lib/python3/dist-packages/
 
-# Copia le librerie di KiCad (simboli, footprint, modelli 3D)
-RUN cp -r /usr/share/kicad $APP.AppDir/usr/share/
-
-# Copia Python binario
-RUN cp /usr/bin/python3 $APP.AppDir/usr/bin/ && \
-    cp /usr/bin/python3.8 $APP.AppDir/usr/bin/
-
-# Copia gdk-pixbuf-query-loaders per generare il cache al runtime
+# Supporto Grafico e Icone (CRITICO)
 RUN cp /usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders $APP.AppDir/usr/bin/ && \
-    chmod +x $APP.AppDir/usr/bin/gdk-pixbuf-query-loaders
+    mkdir -p $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders && \
+    cp /usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/*.so $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/ && \
+    mkdir -p $APP.AppDir/usr/share/icons && \
+    cp -r /usr/share/icons/hicolor $APP.AppDir/usr/share/icons/ && \
+    mkdir -p $APP.AppDir/usr/share/mime && \
+    cp -r /usr/share/mime/* $APP.AppDir/usr/share/mime/
 
-# Copia manualmente la libreria standard di Python
-RUN mkdir -p $APP.AppDir/usr/lib/python3.8
-RUN cp -r /usr/lib/python3.8/* $APP.AppDir/usr/lib/python3.8/
-
-# Copia i pacchetti Python dist-packages
-RUN mkdir -p $APP.AppDir/usr/lib/python3/dist-packages
-RUN cp -r /usr/lib/python3/dist-packages/* $APP.AppDir/usr/lib/python3/dist-packages/
-
-# Esegue linuxdeploy SENZA plugin (ignora errori di patchelf)
+# Esegue linuxdeploy per dipendenze librerie
 RUN squashfs-root/AppRun --appdir $APP.AppDir \
     --executable /usr/bin/kicad \
     --desktop-file /usr/share/applications/kicad.desktop \
     --icon-file /usr/share/icons/hicolor/128x128/apps/kicad.png \
     --output appimage || true
 
-# Copia gdk-pixbuf loaders per evitare conflitti con librerie di sistema
-# MA NON copiamo il loader SVG per evitare il conflitto con librsvg/pango
-RUN mkdir -p $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders
-RUN mkdir -p $APP.AppDir/usr/lib/x86_64-linux-gnu/gio/modules
-RUN for loader in /usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/*.so; do \
-    if [ "$(basename $loader)" != "libpixbufloader-svg.so" ]; then \
-        cp "$loader" $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/; \
-    fi; \
-    done
+# Rinomina binario per wrapper
+RUN mv $APP.AppDir/usr/bin/kicad $APP.AppDir/usr/bin/kicad.bin && \
+    rm -f $APP.AppDir/AppRun $APP.AppDir/AppRun.original
 
-# Crea un loaders.cache vuoto - sarà popolato nell'AppRun al primo avvio
-RUN touch $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders.cache
-
-# Rinomina il binario kicad originale per non sovrascriverlo
-RUN mv $APP.AppDir/usr/bin/kicad $APP.AppDir/usr/bin/kicad.bin
-
-# Riscrive una volta sola i percorsi assoluti nel wrapper KiCad mentre l'AppDir e' ancora scrivibile
-RUN awk -v h="\${APPDIR}" 'NR==1{print;next} {gsub("/usr/share/kicad",h"/usr/share/kicad"); gsub("/usr/lib/x86_64-linux-gnu/kicad",h"/usr/lib/x86_64-linux-gnu/kicad"); gsub("/usr/lib/x86_64-linux-gnu",h"/usr/lib/x86_64-linux-gnu"); gsub("/usr/lib",h"/usr/lib"); gsub("/usr/bin",h"/usr/bin"); print}' \
-    $APP.AppDir/usr/bin/kicad.bin > $APP.AppDir/usr/bin/kicad.bin.patched && \
-    mv $APP.AppDir/usr/bin/kicad.bin.patched $APP.AppDir/usr/bin/kicad.bin
-
-# Rimuovi l'AppRun creato da linuxdeploy
-RUN rm -f $APP.AppDir/AppRun $APP.AppDir/AppRun.original
-
-# Crea l'AppRun che imposta correttamente Python e isola l'AppImage dal filesystem host
+# Crea AppRun finale robusto
 RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
-    echo 'SELF=$(readlink -f "$0")' >> $APP.AppDir/AppRun && \
-    echo 'HERE=${SELF%/*}' >> $APP.AppDir/AppRun && \
+    echo 'HERE=$(dirname "$(readlink -f "${0}")")' >> $APP.AppDir/AppRun && \
     echo 'export APPDIR="$HERE"' >> $APP.AppDir/AppRun && \
+    echo 'export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"' >> $APP.AppDir/AppRun && \
+    echo 'export PATH="${HERE}/usr/bin:${PATH}"' >> $APP.AppDir/AppRun && \
+    echo 'export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
-    echo '# Imposta le variabili d'\''ambiente per Python bundled' >> $APP.AppDir/AppRun && \
+    echo '# Python' >> $APP.AppDir/AppRun && \
     echo 'export PYTHONHOME="${HERE}/usr"' >> $APP.AppDir/AppRun && \
     echo 'export PYTHONPATH="${HERE}/usr/lib/python3.8:${HERE}/usr/lib/python3/dist-packages"' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
-    echo '# Prioritizza SOLO le librerie bundled (nessun riferimento al filesystem host)' >> $APP.AppDir/AppRun && \
-    echo 'export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu"' >> $APP.AppDir/AppRun && \
-    echo '' >> $APP.AppDir/AppRun && \
-    echo '# Imposta PATH per usare esclusivamente i binari bundled' >> $APP.AppDir/AppRun && \
-    echo 'export PATH="${HERE}/usr/bin"' >> $APP.AppDir/AppRun && \
-    echo '' >> $APP.AppDir/AppRun && \
-    echo '# Forza le directory dati KiCad bundled invece dei default compilati nel pacchetto Ubuntu' >> $APP.AppDir/AppRun && \
+    echo '# KiCad Paths' >> $APP.AppDir/AppRun && \
     echo 'export KICAD_PATH="${HERE}/usr/share/kicad"' >> $APP.AppDir/AppRun && \
     echo 'export KICAD_TEMPLATE_DIR="${KICAD_PATH}/template"' >> $APP.AppDir/AppRun && \
     echo 'export KICAD_SYMBOL_DIR="${KICAD_PATH}/library"' >> $APP.AppDir/AppRun && \
     echo 'export KISYSMOD="${KICAD_PATH}/modules"' >> $APP.AppDir/AppRun && \
     echo 'export KISYS3DMOD="${KISYSMOD}/packages3d"' >> $APP.AppDir/AppRun && \
-    echo 'export KIGITHUB="https://github.com/KiCad"' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
-    echo '# Disabilita completamente ibus e altri input method per evitare conflitti' >> $APP.AppDir/AppRun && \
-    echo 'export GTK_IM_MODULE="xim"' >> $APP.AppDir/AppRun && \
-    echo 'export QT_IM_MODULE="xim"' >> $APP.AppDir/AppRun && \
-    echo 'export XMODIFIERS=""' >> $APP.AppDir/AppRun && \
-    echo 'export IBUS_USE_PORTAL=0' >> $APP.AppDir/AppRun && \
-    echo 'unset IBUS_ADDRESS' >> $APP.AppDir/AppRun && \
-    echo 'unset IBUS_DAEMON' >> $APP.AppDir/AppRun && \
-    echo '' >> $APP.AppDir/AppRun && \
-    echo '# Sopprime warning GTK non critici' >> $APP.AppDir/AppRun && \
-    echo 'export G_MESSAGES_DEBUG=""' >> $APP.AppDir/AppRun && \
-    echo '' >> $APP.AppDir/AppRun && \
-    echo '# Forza un tema GTK stabile per evitare rendering corrotto con temi host moderni/incompatibili' >> $APP.AppDir/AppRun && \
-    echo 'export GTK_THEME="${KICAD_GTK_THEME-Adwaita}"' >> $APP.AppDir/AppRun && \
-    echo 'export XDG_DATA_DIRS="${HERE}/usr/share"' >> $APP.AppDir/AppRun && \
-    echo '# Disabilita completamente i temi di icone personalizzati' >> $APP.AppDir/AppRun && \
-    echo 'unset XDG_DATA_HOME' >> $APP.AppDir/AppRun && \
-    echo 'unset XDG_CONFIG_HOME' >> $APP.AppDir/AppRun && \
-    echo 'unset XDG_CONFIG_DIRS' >> $APP.AppDir/AppRun && \
-    echo 'export GTK_DATA_PREFIX="${HERE}/usr"' >> $APP.AppDir/AppRun && \
-    echo 'export GIO_MODULE_DIR="${HERE}/usr/lib/x86_64-linux-gnu/gio/modules"' >> $APP.AppDir/AppRun && \
-    echo 'unset GIO_EXTRA_MODULES' >> $APP.AppDir/AppRun && \
-    echo '# CRITICO: Configura gdk-pixbuf loaders' >> $APP.AppDir/AppRun && \
+    echo '# Visual Stability' >> $APP.AppDir/AppRun && \
+    echo 'export GTK_THEME="Adwaita"' >> $APP.AppDir/AppRun && \
     echo 'export GDK_PIXBUF_MODULEDIR="${HERE}/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders"' >> $APP.AppDir/AppRun && \
-    echo '# Usa un cache in /tmp per evitare scritture nell'\''AppImage montata in sola lettura' >> $APP.AppDir/AppRun && \
     echo 'export GDK_PIXBUF_MODULE_FILE="/tmp/kicad-gdk-pixbuf-$$.cache"' >> $APP.AppDir/AppRun && \
-    echo 'trap '\''/bin/rm -f "$GDK_PIXBUF_MODULE_FILE"'\'' EXIT' >> $APP.AppDir/AppRun && \
-    echo '# DEBUG: Attiva logging se KICAD_DEBUG=1' >> $APP.AppDir/AppRun && \
-    echo 'if [ "$KICAD_DEBUG" = "1" ]; then' >> $APP.AppDir/AppRun && \
-    echo '  echo "[DEBUG] GDK_PIXBUF_MODULEDIR=$GDK_PIXBUF_MODULEDIR" >&2' >> $APP.AppDir/AppRun && \
-    echo '  echo "[DEBUG] GDK_PIXBUF_MODULE_FILE=$GDK_PIXBUF_MODULE_FILE" >&2' >> $APP.AppDir/AppRun && \
-    echo '  echo "[DEBUG] LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >&2' >> $APP.AppDir/AppRun && \
-    echo 'fi' >> $APP.AppDir/AppRun && \
-    echo '# Genera cache usando il binario bundled' >> $APP.AppDir/AppRun && \
     echo 'if [ -x "${HERE}/usr/bin/gdk-pixbuf-query-loaders" ]; then' >> $APP.AppDir/AppRun && \
-    echo '  [ "$KICAD_DEBUG" = "1" ] && echo "[DEBUG] Using bundled gdk-pixbuf-query-loaders" >&2' >> $APP.AppDir/AppRun && \
-    echo '  "${HERE}/usr/bin/gdk-pixbuf-query-loaders" "${GDK_PIXBUF_MODULEDIR}"/*.so > "$GDK_PIXBUF_MODULE_FILE" 2>/dev/null' >> $APP.AppDir/AppRun && \
-    echo '  [ "$KICAD_DEBUG" = "1" ] && echo "[DEBUG] gdk-pixbuf cache generated" >&2' >> $APP.AppDir/AppRun && \
+    echo '  "${HERE}/usr/bin/gdk-pixbuf-query-loaders" "${GDK_PIXBUF_MODULEDIR}"/*.so > "$GDK_PIXBUF_MODULE_FILE"' >> $APP.AppDir/AppRun && \
     echo 'fi' >> $APP.AppDir/AppRun && \
+    echo 'trap '\''rm -f "$GDK_PIXBUF_MODULE_FILE"'\'' EXIT' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
-    echo '# Esegui KiCad binario rinominato' >> $APP.AppDir/AppRun && \
     echo 'exec "${HERE}/usr/bin/kicad.bin" "$@"' >> $APP.AppDir/AppRun && \
     chmod +x $APP.AppDir/AppRun
 
-# Scarica appimagetool e genera l'AppImage
+# Genera AppImage
 RUN wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage && \
     chmod +x appimagetool-x86_64.AppImage && \
     ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run $APP.AppDir $APP-$VERSION-x86_64.AppImage
