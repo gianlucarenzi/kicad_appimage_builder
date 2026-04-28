@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y \
     dpkg-dev \
     pkg-config \
     python3-dev \
+    libatk-bridge2.0-0 \
+    libcanberra-gtk3-module \
     && rm -rf /var/lib/apt/lists/*
 
 # Aggiunge PPA KiCad
@@ -64,10 +66,12 @@ RUN cp /usr/bin/python3* $APP.AppDir/usr/bin/ && \
     mkdir -p $APP.AppDir/usr/lib/python3/dist-packages && \
     cp -r /usr/lib/python3/dist-packages/* $APP.AppDir/usr/lib/python3/dist-packages/
 
-# Supporto Grafico e Icone (CRITICO)
+# Supporto Grafico, Icone e GIO (CRITICO)
 RUN cp /usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders $APP.AppDir/usr/bin/ && \
     mkdir -p $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders && \
     cp /usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/*.so $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/ && \
+    mkdir -p $APP.AppDir/usr/lib/x86_64-linux-gnu/gio/modules && \
+    cp /usr/lib/x86_64-linux-gnu/gio/modules/*.so $APP.AppDir/usr/lib/x86_64-linux-gnu/gio/modules/ && \
     mkdir -p $APP.AppDir/usr/share/icons && \
     cp -r /usr/share/icons/hicolor $APP.AppDir/usr/share/icons/ && \
     mkdir -p $APP.AppDir/usr/share/mime && \
@@ -84,10 +88,12 @@ RUN squashfs-root/AppRun --appdir $APP.AppDir \
 RUN mv $APP.AppDir/usr/bin/kicad $APP.AppDir/usr/bin/kicad.bin && \
     rm -f $APP.AppDir/AppRun $APP.AppDir/AppRun.original
 
-# Crea AppRun finale robusto
+# Crea AppRun finale isolato
 RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo 'HERE=$(dirname "$(readlink -f "${0}")")' >> $APP.AppDir/AppRun && \
     echo 'export APPDIR="$HERE"' >> $APP.AppDir/AppRun && \
+    echo '' >> $APP.AppDir/AppRun && \
+    echo '# Isolamento Librerie' >> $APP.AppDir/AppRun && \
     echo 'export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"' >> $APP.AppDir/AppRun && \
     echo 'export PATH="${HERE}/usr/bin:${PATH}"' >> $APP.AppDir/AppRun && \
     echo 'export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"' >> $APP.AppDir/AppRun && \
@@ -102,6 +108,10 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo 'export KICAD_SYMBOL_DIR="${KICAD_PATH}/library"' >> $APP.AppDir/AppRun && \
     echo 'export KISYSMOD="${KICAD_PATH}/modules"' >> $APP.AppDir/AppRun && \
     echo 'export KISYS3DMOD="${KISYSMOD}/packages3d"' >> $APP.AppDir/AppRun && \
+    echo '' >> $APP.AppDir/AppRun && \
+    echo '# GIO/GVFS Isolation (Fix undefined symbols)' >> $APP.AppDir/AppRun && \
+    echo 'export GIO_MODULE_DIR="${HERE}/usr/lib/x86_64-linux-gnu/gio/modules"' >> $APP.AppDir/AppRun && \
+    echo 'unset GIO_EXTRA_MODULES' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
     echo '# Visual Stability' >> $APP.AppDir/AppRun && \
     echo 'export GTK_THEME="Adwaita"' >> $APP.AppDir/AppRun && \
