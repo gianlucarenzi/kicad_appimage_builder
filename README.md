@@ -82,24 +82,43 @@ Questo creerà automaticamente:
 
 L'AppImage generato sarà disponibile in:
 ```
-output/KiCad-5.1.12-x86_64.AppImage
+output/KiCad-5.1.12-<versione>-x86_64.AppImage
 ```
 
 ## Utilizzo
 
 Rendi l'AppImage eseguibile (se necessario):
 ```bash
-chmod +x output/KiCad-5.1.12-x86_64.AppImage
+chmod +x output/KiCad-5.1.12-<versione>-x86_64.AppImage
 ```
 
 Esegui KiCad:
 ```bash
-./output/KiCad-5.1.12-x86_64.AppImage
+./output/KiCad-5.1.12-<versione>-x86_64.AppImage
+```
+
+### Requisito FUSE (libfuse2)
+
+Il runtime AppImage usa FUSE 2 per montare l'immagine, quindi sul sistema host deve essere presente `libfuse2`. Le distribuzioni recenti (Debian 12+, Ubuntu 22.04+) installano di default solo FUSE 3: se all'avvio compare l'errore `dlopen(): error loading libfuse.so.2`, installa la libreria:
+```bash
+# Debian 11/12/13, Ubuntu 22.04
+sudo apt install libfuse2
+# Ubuntu 24.04+
+sudo apt install libfuse2t64
+# Fedora
+sudo dnf install fuse-libs
+# Arch Linux
+sudo pacman -S fuse2
+```
+
+In alternativa, senza installare nulla, l'AppImage può essere estratta ed eseguita al volo (avvio più lento):
+```bash
+./output/KiCad-5.1.12-<versione>-x86_64.AppImage --appimage-extract-and-run
 ```
 
 Per evitare artefatti grafici con alcuni temi host moderni (per esempio Material GTK su Debian 13 MATE), l'AppImage forza di default il tema GTK `Adwaita`. Se vuoi provare un tema diverso:
 ```bash
-KICAD_GTK_THEME=TraditionalOk ./output/KiCad-5.1.12-x86_64.AppImage
+KICAD_GTK_THEME=TraditionalOk ./output/KiCad-5.1.12-<versione>-x86_64.AppImage
 ```
 
 Il launcher evita inoltre di scrivere dentro l'AppImage montata in sola lettura, genera il cache `gdk-pixbuf` in `/tmp` e blocca il caricamento dei moduli `gio/gvfs` del sistema host quando sono incompatibili con le librerie bundled.
@@ -108,7 +127,7 @@ Il launcher evita inoltre di scrivere dentro l'AppImage montata in sola lettura,
 
 Per visualizzare informazioni di debug sul caricamento dei loader gdk-pixbuf:
 ```bash
-KICAD_DEBUG=1 ./output/KiCad-5.1.12-x86_64.AppImage
+KICAD_DEBUG=1 ./output/KiCad-5.1.12-<versione>-x86_64.AppImage
 ```
 
 ## Struttura del Progetto
