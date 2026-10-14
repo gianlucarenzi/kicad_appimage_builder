@@ -146,7 +146,10 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo 'exec "${HERE}/usr/bin/kicad.bin" "$@"' >> $APP.AppDir/AppRun && \
     chmod +x $APP.AppDir/AppRun
 
-# Genera AppImage (appimagetool dell'architettura: include il runtime giusto)
+# Genera AppImage (appimagetool dell'architettura: include il runtime giusto).
+# appimagetool riconosce in ARCH solo x86_64, arm e arm_aarch64: con un altro nome
+# prova a dedurre l'architettura dalle librerie e su aarch64 fallisce
 RUN curl -fsSLO https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-$APPIMAGE_ARCH.AppImage && \
     mkdir appimagetool && cd appimagetool && appimage-extract ../appimagetool-$APPIMAGE_ARCH.AppImage && cd .. && \
-    ARCH=$APPIMAGE_ARCH appimagetool/squashfs-root/AppRun --no-appstream $APP.AppDir $APP-$VERSION-$APPIMAGE_ARCH.AppImage
+    case $APPIMAGE_ARCH in aarch64) TOOL_ARCH=arm_aarch64 ;; armhf) TOOL_ARCH=arm ;; *) TOOL_ARCH=$APPIMAGE_ARCH ;; esac && \
+    ARCH=$TOOL_ARCH appimagetool/squashfs-root/AppRun --no-appstream $APP.AppDir $APP-$VERSION-$APPIMAGE_ARCH.AppImage
