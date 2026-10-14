@@ -1,6 +1,6 @@
 # KiCad 5.1.12 AppImage Builder
 
-Progetto per creare un AppImage funzionante di KiCad 5.1.12 basato su Ubuntu 20.04, compatibile con Debian 12 e altri sistemi Linux moderni.
+Progetto per creare un AppImage funzionante di KiCad 5.1.12 basato su Ubuntu 20.04, compatibile con Debian 11 e successive e altri sistemi Linux moderni (glibc 2.31+), per le architetture x86_64, aarch64 e armhf.
 
 ## Caratteristiche
 
@@ -24,6 +24,15 @@ Per costruire l'AppImage, esegui semplicemente:
 ```bash
 ./build_kicad_appimage.sh
 ```
+
+Per default l'AppImage è per l'architettura della macchina (`uname -m`). Per un'altra architettura imposta `APPIMAGE_ARCH` (`x86_64`, `aarch64` o `armhf`):
+
+```bash
+APPIMAGE_ARCH=aarch64 ./build_kicad_appimage.sh
+APPIMAGE_ARCH=armhf ./build_kicad_appimage.sh
+```
+
+Un'architettura diversa da quella della macchina viene emulata con QEMU, che deve essere registrato in binfmt_misc (per esempio `sudo apt install qemu-user-static binfmt-support` su Debian/Ubuntu); la build emulata è molto più lenta.
 
 Lo script:
 1. Costruisce l'immagine Docker con KiCad 5.1.12 e tutte le dipendenze
@@ -59,7 +68,9 @@ La workflow si attiva automaticamente quando:
 Dopo ogni build riuscito:
 1. Vai su **Actions** nel repository GitHub
 2. Seleziona il workflow run completato
-3. Scarica l'artifact `KiCad-5.1.12-AppImage`
+3. Scarica l'artifact `KiCad-5.1.12-<versione>-<architettura>-AppImage`
+
+La workflow costruisce un AppImage per ogni architettura: x86_64 e aarch64 sui runner nativi di GitHub (aarch64 sul runner ARM64), armhf emulato con QEMU.
 
 Gli artifacts sono disponibili per 30 giorni.
 
@@ -82,28 +93,28 @@ Questo creerà automaticamente:
 
 L'AppImage generato sarà disponibile in:
 ```
-output/KiCad-5.1.12-<versione>-x86_64.AppImage
+output/KiCad-5.1.12-<versione>-<architettura>.AppImage
 ```
 
 ## Utilizzo
 
 Rendi l'AppImage eseguibile (se necessario):
 ```bash
-chmod +x output/KiCad-5.1.12-<versione>-x86_64.AppImage
+chmod +x output/KiCad-5.1.12-<versione>-<architettura>.AppImage
 ```
 
 Esegui KiCad:
 ```bash
-./output/KiCad-5.1.12-<versione>-x86_64.AppImage
+./output/KiCad-5.1.12-<versione>-<architettura>.AppImage
 ```
 
 ### Requisito FUSE (libfuse2)
 
 Il runtime AppImage usa FUSE 2 per montare l'immagine, quindi sul sistema host deve essere presente `libfuse2`. Le distribuzioni recenti (Debian 12+, Ubuntu 22.04+) installano di default solo FUSE 3: se all'avvio compare l'errore `dlopen(): error loading libfuse.so.2`, installa la libreria:
 ```bash
-# Debian 11/12/13, Ubuntu 22.04
+# Debian 11/12, Ubuntu 22.04
 sudo apt install libfuse2
-# Ubuntu 24.04+
+# Debian 13+, Ubuntu 24.04+
 sudo apt install libfuse2t64
 # Fedora
 sudo dnf install fuse-libs
@@ -113,12 +124,12 @@ sudo pacman -S fuse2
 
 In alternativa, senza installare nulla, l'AppImage può essere estratta ed eseguita al volo (avvio più lento):
 ```bash
-./output/KiCad-5.1.12-<versione>-x86_64.AppImage --appimage-extract-and-run
+./output/KiCad-5.1.12-<versione>-<architettura>.AppImage --appimage-extract-and-run
 ```
 
 Per evitare artefatti grafici con alcuni temi host moderni (per esempio Material GTK su Debian 13 MATE), l'AppImage forza di default il tema GTK `Adwaita`. Se vuoi provare un tema diverso:
 ```bash
-KICAD_GTK_THEME=TraditionalOk ./output/KiCad-5.1.12-<versione>-x86_64.AppImage
+KICAD_GTK_THEME=TraditionalOk ./output/KiCad-5.1.12-<versione>-<architettura>.AppImage
 ```
 
 Il launcher evita inoltre di scrivere dentro l'AppImage montata in sola lettura, genera il cache `gdk-pixbuf` in `/tmp` e blocca il caricamento dei moduli `gio/gvfs` del sistema host quando sono incompatibili con le librerie bundled.
@@ -127,7 +138,7 @@ Il launcher evita inoltre di scrivere dentro l'AppImage montata in sola lettura,
 
 Per visualizzare informazioni di debug sul caricamento dei loader gdk-pixbuf:
 ```bash
-KICAD_DEBUG=1 ./output/KiCad-5.1.12-<versione>-x86_64.AppImage
+KICAD_DEBUG=1 ./output/KiCad-5.1.12-<versione>-<architettura>.AppImage
 ```
 
 ## Struttura del Progetto

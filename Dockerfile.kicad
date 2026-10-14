@@ -4,10 +4,19 @@ FROM ubuntu:20.04
 # Evita richieste interattive
 ARG DEBIAN_FRONTEND=noninteractive
 
+# Architettura dell'AppImage (x86_64, aarch64, armhf) e triplet multiarch Debian
+# corrispondente (x86_64-linux-gnu, aarch64-linux-gnu, arm-linux-gnueabihf):
+# li passa build_kicad_appimage.sh insieme a --platform
+ARG APPIMAGE_ARCH=x86_64
+ARG MULTIARCH=x86_64-linux-gnu
+ENV APPIMAGE_ARCH=$APPIMAGE_ARCH
+ENV MULTIARCH=$MULTIARCH
+
 # Installa dipendenze base
 RUN apt-get update && apt-get install -y \
     software-properties-common \
-    wget \
+    ca-certificates \
+    curl \
     dirmngr \
     libgl1-mesa-glx \
     librsvg2-bin \
@@ -17,7 +26,8 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     libatk-bridge2.0-0 \
     libcanberra-gtk3-module \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* && \
+    test "$(dpkg-architecture -qDEB_HOST_MULTIARCH)" = "$MULTIARCH"
 
 # Aggiunge PPA KiCad
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys FDA854F61C4D0D9572BB95E5245D5502FAD7A805 && \
@@ -34,17 +44,29 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /build
 
+# Estrae un AppImage in squashfs-root/ della directory corrente. Emulato da QEMU
+# (binfmt_misc) un AppImage non parte ("Exec format error"): QEMU vuole zeri nei
+# byte 8-10 dell'header ELF, dove l'AppImage ha il magic AI\x02. Una copia senza
+# quei byte esegue lo stesso runtime (che non li legge); nativamente non cambia nulla.
+RUN printf '%s\n' '#!/bin/sh' 'set -e' \
+    'cp "$1" /tmp/appimage.run' \
+    "printf '\\0\\0\\0' | dd of=/tmp/appimage.run bs=1 seek=8 count=3 conv=notrunc 2>/dev/null" \
+    'chmod +x /tmp/appimage.run' \
+    '/tmp/appimage.run --appimage-extract >/dev/null' \
+    'rm -f /tmp/appimage.run' > /usr/local/bin/appimage-extract && \
+    chmod +x /usr/local/bin/appimage-extract
+
 # Prepara linuxdeploy
-RUN wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage && \
-    chmod +x linuxdeploy-x86_64.AppImage && \
-    ./linuxdeploy-x86_64.AppImage --appimage-extract
+# curl e non wget: sotto QEMU armhf wget non riesce a verificare il certificato di github.com
+RUN curl -fsSLO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$APPIMAGE_ARCH.AppImage && \
+    appimage-extract linuxdeploy-$APPIMAGE_ARCH.AppImage
 
 ENV APP=KiCad
 ENV VERSION=5.1.12
 
 # Crea struttura AppDir
 RUN mkdir -p $APP.AppDir/usr/bin \
-    $APP.AppDir/usr/lib/x86_64-linux-gnu/kicad \
+    $APP.AppDir/usr/lib/$MULTIARCH/kicad \
     $APP.AppDir/usr/share
 
 # Copia binari e risorse
@@ -56,7 +78,7 @@ RUN cp /usr/bin/kicad* $APP.AppDir/usr/bin/ && \
     cp /usr/bin/pl_editor $APP.AppDir/usr/bin/ && \
     cp /usr/bin/bitmap2component $APP.AppDir/usr/bin/ && \
     cp /usr/bin/pcb_calculator $APP.AppDir/usr/bin/ && \
-    cp -r /usr/lib/x86_64-linux-gnu/kicad/plugins $APP.AppDir/usr/lib/x86_64-linux-gnu/kicad/ && \
+    cp -r /usr/lib/$MULTIARCH/kicad/plugins $APP.AppDir/usr/lib/$MULTIARCH/kicad/ && \
     cp -r /usr/share/kicad $APP.AppDir/usr/share/
 
 # Python
@@ -67,11 +89,11 @@ RUN cp /usr/bin/python3* $APP.AppDir/usr/bin/ && \
     cp -r /usr/lib/python3/dist-packages/* $APP.AppDir/usr/lib/python3/dist-packages/
 
 # Supporto Grafico, Icone e GIO (CRITICO)
-RUN cp /usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders $APP.AppDir/usr/bin/ && \
-    mkdir -p $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders && \
-    cp /usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/*.so $APP.AppDir/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/ && \
-    mkdir -p $APP.AppDir/usr/lib/x86_64-linux-gnu/gio/modules && \
-    cp /usr/lib/x86_64-linux-gnu/gio/modules/*.so $APP.AppDir/usr/lib/x86_64-linux-gnu/gio/modules/ && \
+RUN cp /usr/lib/$MULTIARCH/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders $APP.AppDir/usr/bin/ && \
+    mkdir -p $APP.AppDir/usr/lib/$MULTIARCH/gdk-pixbuf-2.0/2.10.0/loaders && \
+    cp /usr/lib/$MULTIARCH/gdk-pixbuf-2.0/2.10.0/loaders/*.so $APP.AppDir/usr/lib/$MULTIARCH/gdk-pixbuf-2.0/2.10.0/loaders/ && \
+    mkdir -p $APP.AppDir/usr/lib/$MULTIARCH/gio/modules && \
+    cp /usr/lib/$MULTIARCH/gio/modules/*.so $APP.AppDir/usr/lib/$MULTIARCH/gio/modules/ && \
     mkdir -p $APP.AppDir/usr/share/icons && \
     cp -r /usr/share/icons/hicolor $APP.AppDir/usr/share/icons/ && \
     mkdir -p $APP.AppDir/usr/share/mime && \
@@ -93,7 +115,7 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo 'export APPDIR="$HERE"' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
     echo '# Isolamento Librerie' >> $APP.AppDir/AppRun && \
-    echo 'export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"' >> $APP.AppDir/AppRun && \
+    echo 'export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/'"$MULTIARCH"':${LD_LIBRARY_PATH}"' >> $APP.AppDir/AppRun && \
     echo 'export PATH="${HERE}/usr/bin:${PATH}"' >> $APP.AppDir/AppRun && \
     echo 'export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
@@ -109,12 +131,12 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo 'export KISYS3DMOD="${KISYSMOD}/packages3d"' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
     echo '# GIO/GVFS Isolation (Fix undefined symbols)' >> $APP.AppDir/AppRun && \
-    echo 'export GIO_MODULE_DIR="${HERE}/usr/lib/x86_64-linux-gnu/gio/modules"' >> $APP.AppDir/AppRun && \
+    echo 'export GIO_MODULE_DIR="${HERE}/usr/lib/'"$MULTIARCH"'/gio/modules"' >> $APP.AppDir/AppRun && \
     echo 'unset GIO_EXTRA_MODULES' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
     echo '# Visual Stability' >> $APP.AppDir/AppRun && \
     echo 'export GTK_THEME="Adwaita"' >> $APP.AppDir/AppRun && \
-    echo 'export GDK_PIXBUF_MODULEDIR="${HERE}/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders"' >> $APP.AppDir/AppRun && \
+    echo 'export GDK_PIXBUF_MODULEDIR="${HERE}/usr/lib/'"$MULTIARCH"'/gdk-pixbuf-2.0/2.10.0/loaders"' >> $APP.AppDir/AppRun && \
     echo 'export GDK_PIXBUF_MODULE_FILE="/tmp/kicad-gdk-pixbuf-$$.cache"' >> $APP.AppDir/AppRun && \
     echo 'if [ -x "${HERE}/usr/bin/gdk-pixbuf-query-loaders" ]; then' >> $APP.AppDir/AppRun && \
     echo '  "${HERE}/usr/bin/gdk-pixbuf-query-loaders" "${GDK_PIXBUF_MODULEDIR}"/*.so > "$GDK_PIXBUF_MODULE_FILE"' >> $APP.AppDir/AppRun && \
@@ -124,7 +146,7 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo 'exec "${HERE}/usr/bin/kicad.bin" "$@"' >> $APP.AppDir/AppRun && \
     chmod +x $APP.AppDir/AppRun
 
-# Genera AppImage
-RUN wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage && \
-    chmod +x appimagetool-x86_64.AppImage && \
-    ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run --no-appstream $APP.AppDir $APP-$VERSION-x86_64.AppImage
+# Genera AppImage (appimagetool dell'architettura: include il runtime giusto)
+RUN curl -fsSLO https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-$APPIMAGE_ARCH.AppImage && \
+    mkdir appimagetool && cd appimagetool && appimage-extract ../appimagetool-$APPIMAGE_ARCH.AppImage && cd .. && \
+    ARCH=$APPIMAGE_ARCH appimagetool/squashfs-root/AppRun --no-appstream $APP.AppDir $APP-$VERSION-$APPIMAGE_ARCH.AppImage

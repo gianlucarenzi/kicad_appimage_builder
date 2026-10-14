@@ -17,13 +17,34 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04  # Versione fissata: ubuntu-latest migra a Ubuntu 26 dal 19/10/2026
+    # Un AppImage per architettura, tutte dal PPA KiCad 5.1 per Ubuntu 20.04 (glibc 2.31):
+    # - x86_64 e aarch64 sui runner nativi (aarch64 sul runner ARM64 di GitHub)
+    # - armhf emulato da QEMU: i runner ARM64 di GitHub non eseguono codice a 32 bit
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04      # Versione fissata: ubuntu-latest migra a Ubuntu 26 dal 19/10/2026
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+          - arch: armhf
+            runner: ubuntu-24.04
+            qemu: linux/arm/v7
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.qemu && 300 || 90 }}
     permissions:
       contents: write  # Necessario per creare release e caricare assets
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        if: matrix.qemu
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: ${{ matrix.qemu }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -45,9 +66,11 @@ jobs:
             RELEASE_VERSION="dev-${GITHUB_SHA::7}"
           fi
           echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_ENV"
-          echo "APPIMAGE=KiCad-5.1.12-$RELEASE_VERSION-x86_64.AppImage" >> "$GITHUB_ENV"
+          echo "APPIMAGE=KiCad-5.1.12-$RELEASE_VERSION-${{ matrix.arch }}.AppImage" >> "$GITHUB_ENV"
 
       - name: Build KiCad AppImage
+        env:
+          APPIMAGE_ARCH: ${{ matrix.arch }}
         run: |
           chmod +x build_kicad_appimage.sh
           ./build_kicad_appimage.sh
@@ -57,12 +80,15 @@ jobs:
           ls -lh output/
           file "output/$APPIMAGE"
           chmod +x "output/$APPIMAGE"
-          "output/$APPIMAGE" --appimage-version || true
+          # Eseguibile solo sull'architettura del runner (armhf e' emulato)
+          if [ "${{ matrix.qemu }}" = "" ]; then
+            "output/$APPIMAGE" --appimage-version || true
+          fi
 
       - name: Upload AppImage as artifact
         uses: actions/upload-artifact@v7
         with:
-          name: KiCad-5.1.12-${{ env.RELEASE_VERSION }}-AppImage
+          name: KiCad-5.1.12-${{ env.RELEASE_VERSION }}-${{ matrix.arch }}-AppImage
           path: output/${{ env.APPIMAGE }}
           retention-days: 30
 
@@ -80,16 +106,24 @@ jobs:
 
             ## Download
 
-            Scarica `${{ env.APPIMAGE }}` e rendilo eseguibile:
+            Scarica l'AppImage della tua architettura e rendilo eseguibile:
+
+            | Architettura | File |
+            |---|---|
+            | PC a 64 bit (x86_64) | `KiCad-5.1.12-${{ env.RELEASE_VERSION }}-x86_64.AppImage` |
+            | ARM a 64 bit, es. Raspberry Pi 3/4/5 con sistema a 64 bit (aarch64) | `KiCad-5.1.12-${{ env.RELEASE_VERSION }}-aarch64.AppImage` |
+            | ARM a 32 bit, es. Raspberry Pi con sistema a 32 bit (armhf) | `KiCad-5.1.12-${{ env.RELEASE_VERSION }}-armhf.AppImage` |
 
             ```bash
-            chmod +x ${{ env.APPIMAGE }}
-            ./${{ env.APPIMAGE }}
+            chmod +x KiCad-5.1.12-${{ env.RELEASE_VERSION }}-<architettura>.AppImage
+            ./KiCad-5.1.12-${{ env.RELEASE_VERSION }}-<architettura>.AppImage
             ```
+
+            Richiede `libfuse2` (vedi README), oppure avvia con `--appimage-extract-and-run`.
 
             ## Compatibilità
 
-            - ✅ Debian 12 (Bookworm)
+            - ✅ Debian 11 (Bullseye) e successive
             - ✅ Ubuntu 20.04+
             - ✅ Altre distribuzioni Linux moderne con GLIBC 2.31+
 
