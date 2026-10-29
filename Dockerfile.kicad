@@ -138,6 +138,15 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo '  cmp -s "$p" "$KICAD_3D_PLUGINS/$(basename "$p")" || cp -f "$p" "$KICAD_3D_PLUGINS/"' >> $APP.AppDir/AppRun && \
     echo 'done' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
+    echo '# --python: esegue il Python interno, con il modulo pcbnew, per gli script' >> $APP.AppDir/AppRun && \
+    echo '# (es. "kicad5 --python genera_cpl.py scheda.kicad_pcb")' >> $APP.AppDir/AppRun && \
+    echo 'if [ "$1" = "--python" ]; then' >> $APP.AppDir/AppRun && \
+    echo '  shift' >> $APP.AppDir/AppRun && \
+    echo '  export GIO_MODULE_DIR="${HERE}/usr/lib/'"$MULTIARCH"'/gio/modules"' >> $APP.AppDir/AppRun && \
+    echo '  unset GIO_EXTRA_MODULES' >> $APP.AppDir/AppRun && \
+    echo '  exec "${HERE}/usr/bin/python3" "$@"' >> $APP.AppDir/AppRun && \
+    echo 'fi' >> $APP.AppDir/AppRun && \
+    echo '' >> $APP.AppDir/AppRun && \
     echo '# GIO/GVFS Isolation (Fix undefined symbols)' >> $APP.AppDir/AppRun && \
     echo 'export GIO_MODULE_DIR="${HERE}/usr/lib/'"$MULTIARCH"'/gio/modules"' >> $APP.AppDir/AppRun && \
     echo 'unset GIO_EXTRA_MODULES' >> $APP.AppDir/AppRun && \

@@ -134,6 +134,13 @@ KICAD_GTK_THEME=TraditionalOk ./output/KiCad-5.1.12-<versione>-<architettura>.Ap
 
 Il launcher evita inoltre di scrivere dentro l'AppImage montata in sola lettura, genera il cache `gdk-pixbuf` in `/tmp` e blocca il caricamento dei moduli `gio/gvfs` del sistema host quando sono incompatibili con le librerie bundled.
 
+### Script Python con pcbnew
+
+Con `--python` l'AppImage esegue il Python 3.8 interno, che ha già il modulo `pcbnew`, invece di avviare KiCad. Serve per gli script che leggono o generano file dal PCB (CPL, BOM, ecc.) senza un KiCad 5 installato nel sistema; funziona anche senza display:
+```bash
+./output/KiCad-5.1.12-<versione>-<architettura>.AppImage --python genera_cpl.py scheda.kicad_pcb
+```
+
 ### Debug Mode
 
 Per visualizzare informazioni di debug sul caricamento dei loader gdk-pixbuf:
@@ -156,6 +163,7 @@ KICAD_DEBUG=1 ./output/KiCad-5.1.12-<versione>-<architettura>.AppImage
 3. **Conflitti ibus**: Disabilitato completamente per evitare errori con glib in Debian 12
 4. **Directory KiCad host-side**: `KICAD_SYMBOL_DIR`, `KICAD_TEMPLATE_DIR`, `KISYSMOD` e `KISYS3DMOD` vengono esportate dall'`AppRun` verso i path bundled nell'AppImage
 5. **Temi GTK incompatibili**: il launcher forza `Adwaita` di default per evitare file selector e liste illeggibili con alcuni temi host
+6. **Modelli 3D non visualizzati**: KiCad 5 cerca i plugin 3D (VRML/STEP) solo nel percorso fisso di compilazione o in `~/.kicad/plugins/3d`; l'`AppRun` copia lì quelli bundled
 6. **Launcher read-only safe**: il wrapper KiCad viene riscritto in build, il cache pixbuf vive in `/tmp` e i moduli `gio` host vengono disabilitati per evitare crash/symbol mismatch
 
 ### Compatibilità
