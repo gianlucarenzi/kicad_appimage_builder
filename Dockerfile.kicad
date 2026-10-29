@@ -130,6 +130,14 @@ RUN echo '#!/bin/bash' > $APP.AppDir/AppRun && \
     echo 'export KISYSMOD="${KICAD_PATH}/modules"' >> $APP.AppDir/AppRun && \
     echo 'export KISYS3DMOD="${KISYSMOD}/packages3d"' >> $APP.AppDir/AppRun && \
     echo '' >> $APP.AppDir/AppRun && \
+    echo '# Plugin 3D: KiCad 5 li cerca solo in /usr/lib/'"$MULTIARCH"'/kicad/plugins/3d (percorso' >> $APP.AppDir/AppRun && \
+    echo '# fisso di compilazione) o in ~/.kicad/plugins/3d: senza, il 3D non mostra alcun modello' >> $APP.AppDir/AppRun && \
+    echo 'KICAD_3D_PLUGINS="${HOME}/.kicad/plugins/3d"' >> $APP.AppDir/AppRun && \
+    echo 'mkdir -p "$KICAD_3D_PLUGINS"' >> $APP.AppDir/AppRun && \
+    echo 'for p in "${HERE}/usr/lib/'"$MULTIARCH"'/kicad/plugins/3d"/*.so; do' >> $APP.AppDir/AppRun && \
+    echo '  cmp -s "$p" "$KICAD_3D_PLUGINS/$(basename "$p")" || cp -f "$p" "$KICAD_3D_PLUGINS/"' >> $APP.AppDir/AppRun && \
+    echo 'done' >> $APP.AppDir/AppRun && \
+    echo '' >> $APP.AppDir/AppRun && \
     echo '# GIO/GVFS Isolation (Fix undefined symbols)' >> $APP.AppDir/AppRun && \
     echo 'export GIO_MODULE_DIR="${HERE}/usr/lib/'"$MULTIARCH"'/gio/modules"' >> $APP.AppDir/AppRun && \
     echo 'unset GIO_EXTRA_MODULES' >> $APP.AppDir/AppRun && \
